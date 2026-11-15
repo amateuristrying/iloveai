@@ -17,6 +17,7 @@ import { FullScreenQuad } from 'three/examples/jsm/postprocessing/Pass.js';
 import { createEyeScene } from './scenes/eye.js';
 import { createTVScene } from './scenes/tvhead.js';
 import { createTrainScene } from './scenes/train.js';
+import { createChaseScene } from './scenes/chase.js';
 
 gsap.registerPlugin(Observer);
 
@@ -24,8 +25,9 @@ const GRADE = [
   { grain: 0.022, vig: 0.12 },
   { grain: 0.045, vig: 0.55 },
   { grain: 0.07, vig: 0.8 },
+  { grain: 0.035, vig: 0.07 },
 ];
-const HINTS = ['Move the cursor · Scroll', 'Tap the screens · Scroll', 'End of the line · Scroll up'];
+const HINTS = ['Move the cursor · Scroll', 'Tap the screens · Scroll', 'Look closer · Scroll', 'Tap to make it grab · Scroll up'];
 
 async function boot() {
   // canvas-drawn signage uses the display face, so wait for it (briefly)
@@ -42,7 +44,8 @@ async function boot() {
   const eye = createEyeScene();
   const tv = createTVScene();
   const train = createTrainScene();
-  const scenes = [eye, tv, train];
+  const chase = createChaseScene();
+  const scenes = [eye, tv, train, chase];
 
   // ------------------------------------------------------------ render targets + compositor
   const rtOpts = { type: THREE.HalfFloatType, samples: 4 };
@@ -162,14 +165,19 @@ async function boot() {
   // Adaptive quality: watch real frame intervals; if we're consistently missing frames,
   // drop the render scale a notch (with a cooldown so we never thrash allocations).
   let ftAvg = 16.7;
+  let ftVar = 0;
   let qCool = 2;
   let slowStreak = 0;
   function adapt(rawDt) {
     if (rawDt > 0.25) return; // tab was hidden / debugger pause — ignore
-    ftAvg += (rawDt * 1000 - ftAvg) * 0.08;
+    const ms = rawDt * 1000;
+    ftVar += ((ms - ftAvg) ** 2 - ftVar) * 0.08;
+    ftAvg += (ms - ftAvg) * 0.08;
     qCool -= rawDt;
     if (qCool > 0) return;
-    slowStreak = ftAvg > 21 ? slowStreak + 1 : 0;
+    // a rock-steady 30 fps is a refresh cap (low-power mode), not lag — only react to real stutter
+    const capped = ftAvg < 36 && Math.sqrt(ftVar) < 2.5;
+    slowStreak = ftAvg > 21 && !capped ? slowStreak + 1 : 0;
     if (slowStreak > 20 && quality.scale > quality.min) {
       quality.scale = Math.max(quality.min, quality.scale * 0.82);
       resize();
@@ -209,7 +217,8 @@ async function boot() {
     if (comp.mode !== 0) u.tB.value = renderScene(comp.b, rtB, dt);
     if (comp.mode === 1) {
       // 0→1 opens through the eye's pupil, 1→2 through the TV head's mouth
-      const p = comp.a === 0 ? eye.pupilScreen() : tv.mouthScreen();
+      // 0→1 through the pupil, 1→2 through the mouth, 2→3 through a commuter's eye
+      const p = comp.a === 0 ? eye.pupilScreen() : comp.a === 1 ? tv.mouthScreen() : train.eyeScreen();
       u.uCenter.value.set(p.x, p.y);
       u.uSquash.value = (p.squash || 1) * (1 - comp.boost) + comp.boost;
       u.uRadius.value = p.r * 0.95 * comp.grow + comp.boost * Math.hypot(aspect, 1) * 1.1;
@@ -328,7 +337,7 @@ async function boot() {
     current = to;
     Object.assign(eye.state, { focus: 0, dilate: 0, push: 0 });
     Object.assign(tv.state, { intro: 1, chaos: 0, mouth: 0, push: 0 });
-    if (to !== 2) train.reset();
+    if (to !== 2 && to !== 3) train.reset(); // keep the arrived train (and the dive) for the way back
     gsap.delayedCall(0.25, () => (busy = false)); // swallow trackpad inertia
   }
 
@@ -391,7 +400,30 @@ async function boot() {
       .to(s, { mouth: 0, duration: 0.5, ease: 'power2.in' }, 1.7);
   }
 
-  /** Jumps via the dots (1 ⇄ 3): the signal tears and re-tunes. */
+  /** Scene 3 → 4: pick a face in the crowd and fall into its white eye. */
+  function eyeDive() {
+    Object.assign(comp, { a: 2, b: 3, mode: 1, grow: 0, boost: 0 });
+    train.aimDive();
+    gsap
+      .timeline({ onComplete: () => (finish(3), showPanel(3)) })
+      .to(train.state, { push: 1, duration: 2.5, ease: 'power1.inOut' }, 0)
+      .to(comp, { grow: 0.8, duration: 0.6, ease: 'power2.out' }, 1.65) // let the white swell first
+      .to(comp, { grade: 3, duration: 1.1, ease: 'none' }, 1.4)
+      .to(comp, { boost: 1, duration: 0.5, ease: 'power2.in' }, 2.1);
+  }
+  /** Scene 4 → 3: back out of the eye, into the carriage. */
+  function eyeOut() {
+    Object.assign(comp, { a: 2, b: 3, mode: 1, grow: 1, boost: 1 });
+    train.state.push = 1;
+    gsap
+      .timeline({ onComplete: () => (finish(2), showPanel(2)) })
+      .to(comp, { boost: 0, duration: 0.5, ease: 'power2.out' }, 0)
+      .to(comp, { grade: 2, duration: 1.1, ease: 'none' }, 0.1)
+      .to(comp, { grow: 0, duration: 0.55, ease: 'power2.in' }, 0.4)
+      .to(train.state, { push: 0, duration: 2.3, ease: 'power2.out' }, 0.05);
+  }
+
+  /** Any other jump (the side dots): the signal tears and re-tunes. */
   function glitch(from, to) {
     Object.assign(comp, { a: from, b: to, mode: 2, prog: 0 });
     if (to === 2) train.reset();
@@ -415,6 +447,9 @@ async function boot() {
     else if (from === 1 && to === 0) irisOut();
     else if (from === 1 && to === 2) mouthIn();
     else if (from === 2 && to === 1) mouthOut();
+    // the eye dive needs the train parked; if it's still pulling in, fall back to the glitch
+    else if (from === 2 && to === 3 && train.state.x < 0.05) eyeDive();
+    else if (from === 3 && to === 2 && train.state.arrived > 0.5) eyeOut();
     else glitch(from, to);
   }
 
@@ -454,6 +489,7 @@ async function boot() {
       tapNDC.set(pointer.x, pointer.y);
       tv.tap(tapNDC);
     }
+    if (current === 3 && !busy) chase.tap();
   });
   const up = () => {
     cursor.classList.remove('down');

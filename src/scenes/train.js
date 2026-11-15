@@ -144,7 +144,8 @@ function buildHead(r, detail) {
     add(place(new THREE.ConeGeometry(0.4, 0.7, 3), 0, -1.75, -0.42, Math.PI, 0, 0, new THREE.Vector3(1, 1, 0.3)), '#b9b3a0', 0.1);
     add(place(new THREE.BoxGeometry(0.15, 0.8, 0.05), 0, -2.05, -0.36), r() < 0.6 ? '#b0181c' : '#3a4a80', 0.12);
   }
-  return { body: mergeGeometries(parts), eyes: mergeGeometries(eyes) };
+  // remember one eye (front of the right eyeball) so the camera can dive into it
+  return { body: mergeGeometries(parts), eyes: mergeGeometries(eyes), eye: new THREE.Vector3(0.3, 0.12 * tall, 0.62 + er * 0.3), eyeR: er * 0.9 };
 }
 
 function buildHand(r) {
@@ -164,7 +165,7 @@ export function createTrainScene() {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color('#0a0606');
   scene.fog = new THREE.FogExp2('#0a0606', 0.018);
-  const camera = new THREE.PerspectiveCamera(FOV, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(FOV, 1, 0.02, 200); // near plane small enough to touch an eyeball
 
   scene.add(new THREE.HemisphereLight('#ffd2a0', '#1c2c1c', 1.1));
   const key = new THREE.DirectionalLight('#ffc890', 2.7);
@@ -175,7 +176,8 @@ export function createTrainScene() {
   top.position.set(0, 6, -1);
   scene.add(key, rim, top);
 
-  const state = { x: 0, cam: 0, light: 0, arrived: 0 };
+  /** push: 0 → 1 dives the camera into one commuter's eye (scene 3 → 4). */
+  const state = { x: 0, cam: 0, light: 0, arrived: 0, push: 0 };
   const START = 2 * PITCH + HALF + 9; // lead car's nose begins just off the right edge
   state.x = START;
 
@@ -618,7 +620,7 @@ export function createTrainScene() {
       g.rotation.copy(c.rot);
       g.scale.setScalar(c.s * 1.06);
       hero.add(g);
-      actors.push({ g, eyes, pos: c.pos.clone(), rot: c.rot.clone(), phase: heroRand() * 10, lag: 0.5 + heroRand(), blink: 1 + heroRand() * 5, look: 0.5 + heroRand() * 0.6 });
+      actors.push({ g, eyes, eye: h.eye, eyeR: h.eyeR, pos: c.pos.clone(), rot: c.rot.clone(), phase: heroRand() * 10, lag: 0.5 + heroRand(), blink: 1 + heroRand() * 5, look: 0.5 + heroRand() * 0.6 });
     }
   }
 
@@ -662,10 +664,45 @@ export function createTrainScene() {
   let aspect = 1;
   const api = { onArrive: null };
 
+  // ---------------------------------------------------------------- eye dive (scene 3 → 4)
+  let dive = null;
+  let eyeRW = 0.04;
+  const eyeW = new THREE.Vector3();
+  const camFrom = new THREE.Vector3();
+  const lookFrom = new THREE.Vector3();
+  const ep = new THREE.Vector3();
+  /** Pick the commuter whose eye is closest to the middle of the frame and most face-on. */
+  function aimDive() {
+    camera.updateMatrixWorld();
+    let best = Infinity;
+    for (const a of actors) {
+      a.g.updateMatrixWorld(true);
+      ep.copy(a.eye);
+      a.g.localToWorld(ep).project(camera);
+      if (Math.abs(ep.x) > 0.9 || Math.abs(ep.y) > 0.9) continue;
+      const score = Math.hypot(ep.x * 1.2, ep.y - 0.25) + Math.abs(a.rot.y) * 0.35;
+      if (score < best) {
+        best = score;
+        dive = a;
+      }
+    }
+  }
+  const sOut = { x: 0.5, y: 0.5, r: 0, squash: 1 };
+  /** The dive target's eye on screen (uv) and its radius in screen heights — the wipe hangs on this. */
+  function eyeScreen() {
+    const d = eyeW.distanceTo(camera.position);
+    ep.copy(eyeW).project(camera);
+    sOut.x = ep.x * 0.5 + 0.5;
+    sOut.y = ep.y * 0.5 + 0.5;
+    sOut.r = eyeRW / d / (2 * TAN);
+    return sOut;
+  }
+
   function reset() {
     if (tl) tl.kill();
     tl = null;
-    Object.assign(state, { x: START, cam: 0, light: 0, arrived: 0 });
+    Object.assign(state, { x: START, cam: 0, light: 0, arrived: 0, push: 0 });
+    dive = null;
     prevX = START;
     speed = 0;
   }
@@ -714,16 +751,33 @@ export function createTrainScene() {
     const px = pointer.x * state.arrived;
     const py = pointer.y * state.arrived;
     for (const a of actors) {
-      const w = Math.sin(t * 0.9 * a.lag + a.phase);
+      const calm = a === dive ? 1 - state.push : 1; // the one we dive into holds still
+      const w = Math.sin(t * 0.9 * a.lag + a.phase) * calm;
       a.g.rotation.set(
-        a.rot.x + w * 0.035 - py * 0.22 * a.look,
-        a.rot.y * (1 - 0.55 * state.arrived) + Math.cos(t * 0.7 * a.lag + a.phase) * 0.05 + px * 0.42 * a.look,
+        a.rot.x + w * 0.035 - py * 0.22 * a.look * calm,
+        a.rot.y * (1 - 0.55 * state.arrived) * (a === dive ? 1 - 0.7 * state.push : 1) + Math.cos(t * 0.7 * a.lag + a.phase) * 0.05 * calm + px * 0.42 * a.look * calm,
         a.rot.z + lean * (0.8 + a.lag) + w * 0.02
       );
       a.g.position.set(a.pos.x - lean * 0.22 * a.lag, a.pos.y + Math.sin(t * 1.3 * a.lag + a.phase) * 0.008, a.pos.z);
       a.blink -= dt;
       if (a.blink < 0) a.blink = 2 + Math.random() * 6;
-      a.eyes.scale.y = a.blink < 0.13 ? 0.08 : 1;
+      a.eyes.scale.y = a.blink < 0.13 && !(a === dive && state.push > 0) ? 0.08 : 1;
+    }
+
+    // dive: from the resting framing, close in on one eye (log-space, so the zoom rate feels constant)
+    if (dive && state.push > 0) {
+      dive.g.updateMatrixWorld(true);
+      eyeW.copy(dive.eye);
+      dive.g.localToWorld(eyeW);
+      eyeRW = dive.eyeR * dive.g.scale.x * hero.scale.x;
+      camFrom.copy(camera.position);
+      lookFrom.set(pointer.x * 0.12 * state.arrived, 1.72 - state.cam * 0.14, 0);
+      const p = state.push;
+      const d0 = camFrom.distanceTo(eyeW);
+      const dEnd = eyeRW * 2.4;
+      const ratio = Math.pow(dEnd / d0, p);
+      camera.position.copy(eyeW).addScaledVector(camFrom.sub(eyeW), ratio);
+      camera.lookAt(lookFrom.lerp(eyeW, Math.min(1, p * 2.4)));
     }
 
     dustPts.position.x = ((dustPts.position.x + speed * dt * 0.12 + 12) % 24) - 12;
@@ -765,6 +819,8 @@ export function createTrainScene() {
     resize,
     post,
     warm,
+    aimDive,
+    eyeScreen,
     play,
     reset,
     bloom: { strength: 0.5, radius: 0.5, threshold: 0.92 },

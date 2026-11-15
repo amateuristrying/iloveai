@@ -13,6 +13,10 @@ body[data-scene='2'] {
   --ink: #f4dfb8;
   --accent: #e5b020;
 }
+body[data-scene='3'] {
+  --ink: #0d1315;
+  --accent: #2fa595;
+}
 
 * {
   box-sizing: border-box;
@@ -152,6 +156,13 @@ body.ready #gl {
   position: fixed;
   z-index: 4;
   pointer-events: none;
+  /* hidden titles still bleed their blurred text-shadows; fade the whole panel once its letters are out */
+  opacity: 0;
+  transition: opacity 0.25s ease 0.4s;
+}
+.panel.on {
+  opacity: 1;
+  transition-delay: 0s;
 }
 .panel h1 {
   font-family: var(--display);
@@ -250,6 +261,24 @@ body.ready #gl {
   text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
 }
 
+/* scene 4 — ink on paper, under the chase */
+.p4 {
+  left: var(--pad);
+  bottom: calc(var(--pad) + 40px);
+  color: #0d1315;
+}
+.p4 h1 {
+  font-size: min(7.2vw, 12vh);
+}
+.p4 .line:nth-child(2) {
+  color: #2fa595;
+  -webkit-text-stroke: 2px #0d1315;
+  paint-order: stroke fill;
+}
+.p4 .sub {
+  margin: 0 0 1.2em 0.3em;
+}
+
 /* ---------------------------------------------------------------- cursor */
 .cursor {
   position: fixed;
@@ -327,6 +356,9 @@ body.ready #gl {
   }
   .p3 h1 {
     font-size: 17vw;
+  }
+  .p4 h1 {
+    font-size: 14vw;
   }
   .sub {
     padding: 0 var(--pad);

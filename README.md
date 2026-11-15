@@ -1,12 +1,13 @@
 # AI Loves Us
 
-A satire in three scenes. Three.js + GSAP, one WebGL canvas, scroll to move between scenes.
+A satire in four scenes. Three.js + GSAP, one WebGL canvas, scroll to move between scenes.
 
 1. **AI LOVES US.** A colossal eyeball watches a devoted crowd. It follows your cursor, but only inside a fixed cone; push past it and the eye rests on the rim of its range.
 2. **WE LOVE AI AS WELL.** A head made of CRT televisions with very human teeth. Tap the screens: the jaw drops and a glitch ripples outward from your finger, re-tinting every tube.
 3. **AI LOVES US.** An empty station. A packed metro slides in from the right and brakes with its doors in front of you.
+4. **WE CAN'T ESCAPE AI.** Ink on a white page: a giant robotic hand chases a running figure, forever. Tap and it slams the ground; the runner always leaps clear.
 
-Transitions: an iris wipe through the eye's pupil (1 → 2) and a signal-loss glitch (2 → 3).
+Transitions: an iris wipe through the eye's pupil (1 → 2), a dive into the TV head's open mouth (2 → 3), and a fall into a commuter's white eye (3 → 4). The side dots jump with a signal-loss glitch.
 
 ## Develop
 
