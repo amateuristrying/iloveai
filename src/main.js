@@ -59,6 +59,7 @@ async function boot() {
       uProg: { value: 0 },
       uRadius: { value: 0 },
       uCenter: { value: new THREE.Vector2(0.5, 0.5) },
+      uSquash: { value: 1 },
       uAspect: { value: 1 },
       uTime: { value: 0 },
       uGrain: { value: GRADE[0].grain },
@@ -68,7 +69,7 @@ async function boot() {
     fragmentShader: /* glsl */ `
       uniform sampler2D tA; uniform sampler2D tB;
       uniform int uMode;
-      uniform float uProg, uRadius, uAspect, uTime, uGrain, uVig;
+      uniform float uProg, uRadius, uAspect, uTime, uGrain, uVig, uSquash;
       uniform vec2 uCenter;
       varying vec2 vUv;
       float h1(float p){ return fract(sin(p * 127.1) * 43758.5453); }
@@ -83,7 +84,7 @@ async function boot() {
           col = texture2D(tA, uv).rgb;
         } else if (uMode == 1) {
           // iris wipe: scene B lives inside the pupil, and the pupil swallows the frame
-          vec2 d = uv - uCenter; d.x *= uAspect;
+          vec2 d = uv - uCenter; d.x *= uAspect / uSquash; // squash > 1 = wide ellipse (the mouth)
           float r = length(d);
           float m = (1. - smoothstep(uRadius * .86, uRadius, r)) * step(.0005, uRadius);
           col = mix(texture2D(tA, uv).rgb, texture2D(tB, uv).rgb, m);
@@ -207,8 +208,10 @@ async function boot() {
     u.tA.value = renderScene(comp.a, rtA, dt);
     if (comp.mode !== 0) u.tB.value = renderScene(comp.b, rtB, dt);
     if (comp.mode === 1) {
-      const p = eye.pupilScreen();
+      // 0→1 opens through the eye's pupil, 1→2 through the TV head's mouth
+      const p = comp.a === 0 ? eye.pupilScreen() : tv.mouthScreen();
       u.uCenter.value.set(p.x, p.y);
+      u.uSquash.value = (p.squash || 1) * (1 - comp.boost) + comp.boost;
       u.uRadius.value = p.r * 0.95 * comp.grow + comp.boost * Math.hypot(aspect, 1) * 1.1;
     }
     u.uMode.value = comp.mode;
@@ -324,7 +327,7 @@ async function boot() {
     comp.prog = comp.grow = comp.boost = 0;
     current = to;
     Object.assign(eye.state, { focus: 0, dilate: 0, push: 0 });
-    Object.assign(tv.state, { intro: 1, chaos: 0 });
+    Object.assign(tv.state, { intro: 1, chaos: 0, mouth: 0, push: 0 });
     if (to !== 2) train.reset();
     gsap.delayedCall(0.25, () => (busy = false)); // swallow trackpad inertia
   }
@@ -359,7 +362,36 @@ async function boot() {
       .to(s, { dilate: 0, duration: 0.9, ease: 'power2.inOut' }, 1.4)
       .to(s, { focus: 0, duration: 0.9, ease: 'power2.inOut' }, 1.7);
   }
-  /** Scene 2 ⇄ 3 (and any jump via the dots): the signal tears and re-tunes. */
+  /** Scene 2 → 3: the jaw drops, we dive into the mouth and land on the platform. */
+  function mouthIn() {
+    Object.assign(comp, { a: 1, b: 2, mode: 1, grow: 0, boost: 0 });
+    train.reset();
+    const s = tv.state;
+    gsap
+      .timeline({ onComplete: () => finish(2) })
+      .to(s, { mouth: 1, duration: 0.45, ease: 'power2.out' }, 0)
+      .to(s, { chaos: 0.45, duration: 0.5, ease: 'power2.out', yoyo: true, repeat: 1 }, 0)
+      .to(s, { push: 1, duration: 2.2, ease: 'power3.inOut' }, 0.35)
+      .call(() => train.play(), null, 0.6)
+      .to(comp, { grow: 1, duration: 0.8, ease: 'power2.out' }, 0.95)
+      .to(comp, { grade: 2, duration: 1.3, ease: 'none' }, 1.1)
+      .to(comp, { boost: 1, duration: 0.55, ease: 'power2.in' }, 2.0);
+  }
+  /** Scene 3 → 2: climb back out of the mouth. */
+  function mouthOut() {
+    Object.assign(comp, { a: 1, b: 2, mode: 1, grow: 1, boost: 1 });
+    const s = tv.state;
+    Object.assign(s, { mouth: 1, push: 1 });
+    gsap
+      .timeline({ onComplete: () => (finish(1), showPanel(1)) })
+      .to(comp, { boost: 0, duration: 0.5, ease: 'power2.out' }, 0)
+      .to(s, { push: 0, duration: 2.1, ease: 'power3.inOut' }, 0.1)
+      .to(comp, { grade: 1, duration: 1.2, ease: 'none' }, 0.2)
+      .to(comp, { grow: 0, duration: 0.7, ease: 'power2.in' }, 0.75)
+      .to(s, { mouth: 0, duration: 0.5, ease: 'power2.in' }, 1.7);
+  }
+
+  /** Jumps via the dots (1 ⇄ 3): the signal tears and re-tunes. */
   function glitch(from, to) {
     Object.assign(comp, { a: from, b: to, mode: 2, prog: 0 });
     if (to === 2) train.reset();
@@ -381,6 +413,8 @@ async function boot() {
     tv.release();
     if (from === 0 && to === 1) irisIn();
     else if (from === 1 && to === 0) irisOut();
+    else if (from === 1 && to === 2) mouthIn();
+    else if (from === 2 && to === 1) mouthOut();
     else glitch(from, to);
   }
 
@@ -432,7 +466,7 @@ async function boot() {
   // ------------------------------------------------------------ go
   setHUD(0);
   document.body.classList.add('ready');
-  gsap.delayedCall(0.35, () => showPanel(0));
+  gsap.delayedCall(0.35, () => current === 0 && !busy && showPanel(0)); // skip if the visitor already scrolled on
 
   // handy for poking at things from the console
   window.__ailovesus = { go, scenes, comp, pointer };

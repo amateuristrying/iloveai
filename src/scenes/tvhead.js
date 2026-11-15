@@ -20,7 +20,10 @@ export function createTVScene() {
   const ramp = toonRamp([70, 150, 255]);
 
   /** intro: 0 → 1 as the scene arrives. chaos: global glitch amount while leaving. */
-  const state = { intro: 1, chaos: 0 };
+  /** mouth: forces the jaw wide open. push: dollies the camera into the mouth (scene 2 → 3). */
+  const state = { intro: 1, chaos: 0, mouth: 0, push: 0 };
+  const camBase = new THREE.Vector3();
+  const lookBase = new THREE.Vector3();
 
   scene.add(new THREE.AmbientLight('#4a3aa8', 1.25));
   const l1 = new THREE.DirectionalLight('#c860ff', 3.4);
@@ -300,6 +303,12 @@ export function createTVScene() {
     mesh.frustumCulled = line.frustumCulled = false;
     parent.add(mesh, line);
   }
+  const upperMark = new THREE.Object3D();
+  upperMark.position.set(0, MOUTH_Y - 0.02, 2.05);
+  head.add(upperMark);
+  const lowerMark = new THREE.Object3D();
+  lowerMark.position.set(0, MOUTH_Y + 0.02, 2.0);
+  jawInner.add(lowerMark);
   teethRow(10, 0.82, true, head);
   teethRow(10, 0.76, false, jawInner);
 
@@ -390,13 +399,36 @@ export function createTVScene() {
     held = false;
   }
 
+  const uw = new THREE.Vector3();
+  const lw = new THREE.Vector3();
+  const mouthC = new THREE.Vector3();
+  const camEnd = new THREE.Vector3();
+  const camOff = new THREE.Vector3(0, 0.05, 1.05);
+  const look = new THREE.Vector3();
+  const mp = new THREE.Vector3();
+  const mOut = { x: 0.5, y: 0.5, r: 0, squash: 1.8 };
+
+  /**
+   * Where the open mouth sits on screen (uv 0..1), and its half-height in screen heights.
+   * The wipe into scene 3 is pinned to this, like the eye's pupil for scene 2.
+   */
+  function mouthScreen() {
+    const halfH = uw.distanceTo(lw) * 0.5 * 0.8;
+    const d = mouthC.distanceTo(camera.position);
+    mp.copy(mouthC).project(camera);
+    mOut.x = mp.x * 0.5 + 0.5;
+    mOut.y = mp.y * 0.5 + 0.5;
+    mOut.r = halfH / d / (2 * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)));
+    return mOut;
+  }
+
   function update(dt, t, pointer) {
     now = t;
     const k = state.intro;
     const ease = 1 - Math.pow(1 - k, 3);
 
     // jaw on an under-damped spring so it clacks
-    const want = held || t < holdUntil ? 1 : 0;
+    const want = Math.max(held || t < holdUntil ? 1 : 0, state.mouth * 1.5);
     vel += ((want - open) * 190 - vel * 12) * dt;
     open += vel * dt;
     if (open < -0.04) {
@@ -415,10 +447,12 @@ export function createTVScene() {
 
     rotY = damp(rotY, pointer.x * 0.3, 3, dt);
     rotX = damp(rotX, -pointer.y * 0.16, 3, dt);
-    pivot.rotation.y = rotY + (1 - ease) * -1.1 + Math.sin(t * 0.4) * 0.05;
-    pivot.rotation.x = rotX - Math.max(open, 0) * 0.09;
-    pivot.rotation.z = Math.sin(t * 0.55) * 0.025;
-    pivot.position.y = 0.6 + Math.sin(t * 0.8) * 0.12;
+    // while diving in, ease the head square-on to the camera so we go straight down the throat
+    const free = 1 - state.push;
+    pivot.rotation.y = (rotY + (1 - ease) * -1.1 + Math.sin(t * 0.4) * 0.05) * free;
+    pivot.rotation.x = (rotX - Math.max(open, 0) * 0.09) * free;
+    pivot.rotation.z = Math.sin(t * 0.55) * 0.025 * free;
+    pivot.position.y = 0.6 + Math.sin(t * 0.8) * 0.12 * free;
     pivot.scale.setScalar(0.5 + 0.5 * ease);
     const kick = Math.exp(-(t - tapTime) * 7) * 0.05;
     head.scale.setScalar(1 + kick);
@@ -428,16 +462,30 @@ export function createTVScene() {
     dustPts.rotation.y = t * 0.02;
     dustPts.position.y = Math.sin(t * 0.2) * 0.3;
     halo.material.opacity = 0.75 + 0.25 * Math.sin(t * 2.3) + Math.exp(-(t - tapTime) * 4) * 0.6;
+
+    // camera: from its resting framing, dolly in toward the mouth opening
+    pivot.updateMatrixWorld(true);
+    upperMark.getWorldPosition(uw);
+    lowerMark.getWorldPosition(lw);
+    mouthC.addVectors(uw, lw).multiplyScalar(0.5);
+    const p = state.push;
+    camEnd.copy(mouthC).add(camOff);
+    camera.position.lerpVectors(camBase, camEnd, p);
+    look.lerpVectors(lookBase, mouthC, Math.min(1, p * 1.6));
+    camera.lookAt(look);
+    camera.updateMatrixWorld();
   }
 
   function resize(aspect) {
     camera.aspect = aspect;
     const tall = aspect < 0.85; // on phones the title sits underneath, so lift the head
     const y = tall ? -2.2 : -0.35;
-    camera.position.set(0, y, 13.5 * Math.max(1, 0.78 / aspect));
-    camera.lookAt(0, y, 0);
+    camBase.set(0, y, 13.5 * Math.max(1, 0.78 / aspect));
+    lookBase.set(0, y, 0);
+    camera.position.copy(camBase);
+    camera.lookAt(lookBase);
     camera.updateProjectionMatrix();
   }
 
-  return { scene, camera, state, update, resize, tap, release, bloom: { strength: 0.62, radius: 0.55, threshold: 0.62 } };
+  return { scene, camera, state, update, resize, tap, release, mouthScreen, bloom: { strength: 0.62, radius: 0.55, threshold: 0.62 } };
 }
