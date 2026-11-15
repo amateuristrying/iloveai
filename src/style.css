@@ -1,0 +1,337 @@
+:root {
+  --ink: #0b1040;
+  --accent: #2b44e0;
+  --pad: clamp(18px, 3.2vw, 44px);
+  --display: 'Anton', 'Haettenschweiler', Impact, 'Arial Narrow Bold', sans-serif;
+  --mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+}
+body[data-scene='1'] {
+  --ink: #efe9ff;
+  --accent: #ff4fb8;
+}
+body[data-scene='2'] {
+  --ink: #f4dfb8;
+  --accent: #e5b020;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+}
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: #0f0d28;
+  color: var(--ink);
+  font-family: var(--mono);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  transition: color 0.9s ease;
+}
+
+#gl {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+body.ready #gl {
+  opacity: 1;
+}
+
+/* ---------------------------------------------------------------- HUD */
+.hud {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--pad);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+.hud.top {
+  top: 0;
+}
+.hud.bottom {
+  bottom: 0;
+}
+.brand {
+  font-family: var(--display);
+  font-size: 20px;
+  letter-spacing: 0.06em;
+}
+.brand i {
+  font-style: normal;
+  color: var(--accent);
+  transition: color 0.9s ease;
+}
+.count b {
+  font-weight: 700;
+}
+.hint {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+}
+.hint span {
+  display: inline-block;
+}
+.hint::before {
+  content: '';
+  flex: none;
+  width: 26px;
+  height: 1px;
+  margin-right: 12px;
+  background: currentColor;
+  animation: nudge 1.8s ease-in-out infinite;
+  transform-origin: left;
+}
+@keyframes nudge {
+  0%,
+  100% {
+    transform: scaleX(0.35);
+  }
+  50% {
+    transform: scaleX(1);
+  }
+}
+.note {
+  opacity: 0.7;
+}
+
+.dots {
+  position: fixed;
+  right: var(--pad);
+  top: 50%;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  transform: translateY(-50%);
+}
+.dots button {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+.dots button::after {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  transition: inset 0.35s ease, background 0.35s ease;
+}
+.dots button.on::after {
+  inset: 5px;
+  background: currentColor;
+}
+
+/* ---------------------------------------------------------------- titles */
+.panel {
+  position: fixed;
+  z-index: 4;
+  pointer-events: none;
+}
+.panel h1 {
+  font-family: var(--display);
+  font-weight: 400;
+  line-height: 0.9;
+  letter-spacing: -0.005em;
+  text-transform: uppercase;
+}
+.line {
+  display: block;
+  overflow: hidden;
+  padding: 0.08em 0.04em 0.02em; /* room for the reveal rotation */
+  margin: -0.08em -0.04em -0.02em;
+  white-space: nowrap;
+}
+.ch {
+  display: inline-block;
+  will-change: transform;
+}
+.sub {
+  margin-top: 1.6em;
+  font-size: clamp(10px, 0.95vw, 13px);
+  letter-spacing: 0.14em;
+  line-height: 1.7;
+  text-transform: uppercase;
+}
+
+/* scene 1 — stacked on the left, tagline above */
+.p1 {
+  left: var(--pad);
+  top: 50%;
+  transform: translateY(-50%);
+  color: #0b1040;
+}
+.p1 h1 {
+  font-size: min(14.5vw, 24vh);
+}
+.p1 .line:nth-child(2) {
+  color: #2b44e0;
+}
+.p1 .sub {
+  margin: 0 0 1.5em 0.4em;
+}
+
+/* scene 2 — the words flank the head */
+.p2 {
+  inset: 0;
+  color: #efe9ff;
+}
+.p2 h1 {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 calc(var(--pad) + 46px) 0 var(--pad);
+  font-size: min(11.5vw, 23vh);
+}
+.p2 .col {
+  display: block;
+}
+.p2 .left {
+  transform: translateY(-10%);
+}
+.p2 .right {
+  text-align: right;
+  transform: translateY(18%);
+}
+.p2 .ghost {
+  color: transparent;
+  -webkit-text-stroke: 2px #ff5fd2;
+  text-shadow: 0 0 28px rgba(255, 79, 184, 0.45);
+}
+.p2 .sub {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--pad) + 34px);
+  text-align: center;
+}
+
+/* scene 3 — lettered across the doors */
+.p3 {
+  left: 0;
+  right: 0;
+  bottom: calc(var(--pad) + 30px);
+  text-align: center;
+  color: #f4dfb8;
+}
+.p3 h1 {
+  font-size: min(11.5vw, 17.5vh);
+  text-shadow: 0 4px 0 rgba(20, 2, 3, 0.55), 0 0 60px rgba(10, 0, 0, 0.6);
+}
+.p3 .sub {
+  margin-top: 0.9em;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
+}
+
+/* ---------------------------------------------------------------- cursor */
+.cursor {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 1.5px solid #fff;
+  border-radius: 50%;
+  mix-blend-mode: difference;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease, width 0.25s ease, height 0.25s ease, margin 0.25s ease, background 0.25s ease;
+}
+.cursor::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin: -2px;
+  border-radius: 50%;
+  background: #fff;
+}
+.cursor.live {
+  opacity: 1;
+}
+.cursor.down {
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  background: #fff;
+}
+@media (hover: none) {
+  .cursor {
+    display: none;
+  }
+}
+@media (hover: hover) {
+  body {
+    cursor: none;
+  }
+}
+
+/* ---------------------------------------------------------------- portrait */
+@media (max-aspect-ratio: 85/100) {
+  .p1 {
+    top: auto;
+    bottom: calc(var(--pad) + 44px);
+    transform: none;
+  }
+  .p1 h1 {
+    font-size: min(24vw, 15vh);
+  }
+  .p2 h1 {
+    display: block;
+    inset: auto 0 calc(var(--pad) + 86px) 0;
+    padding: 0;
+    text-align: center;
+    font-size: 15vw;
+  }
+  .p2 .col,
+  .p2 .left,
+  .p2 .right {
+    display: inline;
+    transform: none;
+  }
+  .p2 .line {
+    display: inline-block;
+    vertical-align: top;
+    margin-right: 0.12em;
+  }
+  .p3 h1 {
+    font-size: 17vw;
+  }
+  .sub {
+    padding: 0 var(--pad);
+  }
+  .note {
+    display: none;
+  }
+}
