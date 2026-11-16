@@ -22,6 +22,7 @@ export function createTVScene() {
   /** intro: 0 → 1 as the scene arrives. chaos: global glitch amount while leaving. */
   /** mouth: forces the jaw wide open. push: dollies the camera into the mouth (scene 2 → 3). */
   const state = { intro: 1, chaos: 0, mouth: 0, push: 0 };
+  const events = {}; // sound hooks: clack(strength)
   const camBase = new THREE.Vector3();
   const lookBase = new THREE.Vector3();
 
@@ -432,6 +433,7 @@ export function createTVScene() {
     vel += ((want - open) * 190 - vel * 12) * dt;
     open += vel * dt;
     if (open < -0.04) {
+      if (vel < -1.2) events.clack?.(Math.min(1, -vel / 9)); // teeth meet (each bounce clacks again)
       open = -0.04;
       vel *= -0.4; // teeth clack shut
     }
@@ -487,5 +489,5 @@ export function createTVScene() {
     camera.updateProjectionMatrix();
   }
 
-  return { scene, camera, state, update, resize, tap, release, mouthScreen, bloom: { strength: 0.62, radius: 0.55, threshold: 0.62 } };
+  return { scene, camera, state, events, update, resize, tap, release, mouthScreen, bloom: { strength: 0.62, radius: 0.55, threshold: 0.62 } };
 }

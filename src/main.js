@@ -18,6 +18,7 @@ import { createEyeScene } from './scenes/eye.js';
 import { createTVScene } from './scenes/tvhead.js';
 import { createTrainScene } from './scenes/train.js';
 import { createChaseScene } from './scenes/chase.js';
+import { createAudio } from './audio.js';
 
 gsap.registerPlugin(Observer);
 
@@ -46,6 +47,18 @@ async function boot() {
   const train = createTrainScene();
   const chase = createChaseScene();
   const scenes = [eye, tv, train, chase];
+
+  // ------------------------------------------------------------ sound
+  // Transitions stay silent: every hook below only fires from a scene's own action.
+  const audio = createAudio();
+  eye.events.charge = () => audio.laserCharge();
+  eye.events.beam = () => audio.laserBeam();
+  eye.events.boom = () => audio.blast();
+  tv.events.clack = (s) => current === 1 && !busy && audio.clack(s);
+  chase.events.windup = () => audio.windup();
+  chase.events.whoosh = () => audio.whoosh();
+  chase.events.impact = () => audio.stomp();
+  chase.events.land = () => current === 3 && audio.land();
 
   // ------------------------------------------------------------ render targets + compositor
   const rtOpts = { type: THREE.HalfFloatType, samples: 4 };
@@ -210,6 +223,8 @@ async function boot() {
     last = nowMs;
     adapt(rawDt);
     time += dt;
+    // train rumble / brakes / crowd murmur follow the train's actual motion
+    audio.frame(dt, train.state, current === 2 && !busy && train.state.arrived > 0.3);
     pointer.idle += dt;
 
     const u = compMat.uniforms;
@@ -325,7 +340,10 @@ async function boot() {
   }
 
   train.onArrive = () => {
-    if (current === 2 || (busy && comp.b === 2)) showPanel(2);
+    if (current === 2 || (busy && comp.b === 2)) {
+      showPanel(2);
+      audio.chime();
+    }
   };
 
   // ------------------------------------------------------------ transitions
@@ -442,6 +460,7 @@ async function boot() {
     const from = current;
     hidePanel(from);
     setHUD(to);
+    audio.setScene(to);
     tv.release();
     if (from === 0 && to === 1) irisIn();
     else if (from === 1 && to === 0) irisOut();
@@ -464,6 +483,8 @@ async function boot() {
     onDown: () => go(current - 1),
   });
   window.addEventListener('keydown', (e) => {
+    audio.unlock();
+    if (e.key === 'm' || e.key === 'M') toggleSound();
     if (['ArrowDown', 'PageDown', ' ', 'Enter'].includes(e.key)) go(current + 1);
     if (['ArrowUp', 'PageUp'].includes(e.key)) go(current - 1);
   });
@@ -484,7 +505,8 @@ async function boot() {
   window.addEventListener('pointerdown', (e) => {
     track(e);
     cursor.classList.add('down');
-    if (e.target.closest?.('.dots')) return;
+    audio.unlock(); // browsers only allow sound after a gesture
+    if (e.target.closest?.('.dots, .sound')) return;
     if (current === 1 && !busy) {
       tapNDC.set(pointer.x, pointer.y);
       tv.tap(tapNDC);
@@ -499,6 +521,22 @@ async function boot() {
   window.addEventListener('pointerup', up);
   window.addEventListener('pointercancel', up);
   document.addEventListener('pointerleave', () => cursor.classList.remove('live'));
+
+  // ------------------------------------------------------------ sound toggle
+  const soundBtn = document.querySelector('.sound');
+  function paintSound() {
+    soundBtn.setAttribute('aria-pressed', String(audio.enabled));
+    soundBtn.querySelector('.label').textContent = audio.enabled ? 'Sound' : 'Muted';
+  }
+  function toggleSound() {
+    audio.setEnabled(!audio.enabled);
+    paintSound();
+  }
+  soundBtn.addEventListener('click', () => {
+    audio.unlock();
+    toggleSound();
+  });
+  paintSound();
 
   // ------------------------------------------------------------ go
   setHUD(0);

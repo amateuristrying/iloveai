@@ -33,7 +33,7 @@ const backOut = (x) => {
   return 1 + (c + 1) * t * t * t + c * t * t;
 };
 
-export function createEyeBlast({ scene, spots, officer, figMat, ramp }) {
+export function createEyeBlast({ scene, spots, officer, figMat, events = {} }) {
   const rand = rng(77);
   const Y = new THREE.Vector3(0, 1, 0);
   const OFF = new THREE.Matrix4().makeTranslation(0, -COM, 0);
@@ -414,8 +414,10 @@ export function createEyeBlast({ scene, spots, officer, figMat, ramp }) {
     }
     shot.t = 0;
     shot.impacted = false;
+    shot.beamed = false;
     shot.target.copy(point);
     lastFire = now;
+    events.charge?.();
   }
 
   /**
@@ -433,8 +435,13 @@ export function createEyeBlast({ scene, spots, officer, figMat, ramp }) {
     const charge = st < CHARGE ? smooth(st / CHARGE) : Math.max(0, 1 - (st - CHARGE - 0.12) / 0.4);
     const beamOn = st >= CHARGE ? Math.min(1, (st - CHARGE) / EXTEND) : 0;
     const beamI = st < CHARGE ? 0 : st < CHARGE + 0.3 ? 1 : Math.max(0, 1 - (st - CHARGE - 0.3) / 0.3);
+    if (!shot.beamed && st >= CHARGE) {
+      shot.beamed = true;
+      events.beam?.();
+    }
     if (!shot.impacted && st >= CHARGE + EXTEND) {
       shot.impacted = true;
+      events.boom?.();
       kick = 1;
       explode(shot.target);
       if (shot.queued) {

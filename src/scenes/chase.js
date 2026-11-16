@@ -27,6 +27,7 @@ export function createChaseScene() {
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
   const ramp = toonRamp([95, 175, 255]);
   const state = { intro: 1 };
+  const events = {}; // sound hooks: windup, whoosh, impact, land
 
   scene.add(new THREE.HemisphereLight('#ffffff', '#a9c6bf', 1.55));
   const key = new THREE.DirectionalLight('#ffffff', 2.3);
@@ -390,6 +391,7 @@ export function createChaseScene() {
   let shake = 0;
 
   function impact() {
+    events.impact?.();
     impactT = 0;
     shake = 1;
     ring.position.set(impactX, 0.012, 0.3);
@@ -414,6 +416,7 @@ export function createChaseScene() {
     });
   }
   function landPuff() {
+    events.land?.();
     landT = 0;
     puffs.slice(8).forEach((p, i) => {
       p.t = 0;
@@ -438,11 +441,13 @@ export function createChaseScene() {
           }
         },
       })
+      .call(() => events.windup?.(), null, 0)
       .to(P, { lift: 1, splay: 1, reach: 0, duration: 0.26, ease: 'power2.out' }, 0)
       .to(J, { h: 1, duration: 0.34, ease: 'power2.out' }, 0.14)
       .to(J, { tuck: 1, duration: 0.18, ease: 'power2.out' }, 0.14)
       .to(J, { fx: 1.3, duration: 0.6, ease: 'power2.out' }, 0.14)
       .call(() => (impactX = layout.runnerX - 0.35), null, 0.26)
+      .call(() => events.whoosh?.(), null, 0.26)
       .to(P, { slam: 1, duration: 0.15, ease: 'power4.in' }, 0.26)
       .call(impact, null, 0.41)
       .set(P, { lift: 0 }, 0.42)
@@ -643,5 +648,5 @@ export function createChaseScene() {
     camera.updateProjectionMatrix();
   }
 
-  return { scene, camera, state, update, resize, tap, bloom: null };
+  return { scene, camera, state, events, update, resize, tap, bloom: null };
 }

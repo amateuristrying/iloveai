@@ -9,6 +9,10 @@ A satire in four scenes. Three.js + GSAP, one WebGL canvas, scroll to move betwe
 
 Transitions: an iris wipe through the eye's pupil (1 → 2), a dive into the TV head's open mouth (2 → 3), and a fall into a commuter's white eye (3 → 4). The side dots jump with a signal-loss glitch.
 
+## Sound
+
+All sound effects are synthesised live with the Web Audio API (`src/audio.js`), so there are no audio files. Browsers only allow audio after a gesture, so sound starts on the first tap or key press. The **Sound** button in the top bar (or the M key) mutes it, and the choice is remembered. Scrolling between scenes is silent.
+
 ## Develop
 
 ```bash

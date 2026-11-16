@@ -350,7 +350,8 @@ export function createEyeScene() {
   scene.add(officer);
 
   // tap to fire: laser, blast, flying bodies (see eyeBlast.js)
-  const blastSys = createEyeBlast({ scene, spots, officer, figMat, ramp });
+  const events = {}; // sound hooks: charge, beam, boom
+  const blastSys = createEyeBlast({ scene, spots, officer, figMat, events });
 
   // attention reticle that slides over the ground where the eye is "looking"
   const reticle = new THREE.Group();
@@ -541,6 +542,7 @@ export function createEyeScene() {
     resize,
     pupilScreen,
     fire,
+    events,
     get bloom() {
       return blastSys.bloom;
     },
