@@ -490,6 +490,7 @@ async function boot() {
       tv.tap(tapNDC);
     }
     if (current === 3 && !busy) chase.tap();
+    if (current === 0 && !busy) eye.fire(pointer.x, pointer.y);
   });
   const up = () => {
     cursor.classList.remove('down');

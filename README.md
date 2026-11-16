@@ -2,7 +2,7 @@
 
 A satire in four scenes. Three.js + GSAP, one WebGL canvas, scroll to move between scenes.
 
-1. **AI LOVES US.** A colossal eyeball watches a devoted crowd. It follows your cursor, but only inside a fixed cone; push past it and the eye rests on the rim of its range.
+1. **AI LOVES US.** A colossal eyeball watches a devoted crowd. It follows your cursor, but only inside a fixed cone; push past it and the eye rests on the rim of its range. Tap the plaza and it fires a laser: the blast vaporises whoever stood there and throws everyone nearby, who eventually get up and walk back.
 2. **WE LOVE AI AS WELL.** A head made of CRT televisions with very human teeth. Tap the screens: the jaw drops and a glitch ripples outward from your finger, re-tinting every tube.
 3. **AI LOVES US.** An empty station. A packed metro slides in from the right and brakes with its doors in front of you.
 4. **WE CAN'T ESCAPE AI.** Ink on a white page: a giant robotic hand chases a running figure, forever. Tap and it slams the ground; the runner always leaps clear.

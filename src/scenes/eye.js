@@ -6,6 +6,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { rng, damp, toonRamp, canvasTex, GLSL_NOISE } from '../utils.js';
+import { createEyeBlast } from './eyeBlast.js';
 
 /** The pupil shares its colour with scene 2's background so the iris-wipe is seamless. */
 export const PUPIL_COLOR = '#0f0d28';
@@ -13,6 +14,7 @@ export const PUPIL_COLOR = '#0f0d28';
 const R = 3; // eyeball radius
 const MAX_GAZE = THREE.MathUtils.degToRad(38); // how far the eye may rotate off-centre
 const GAZE_PLANE = 6.5; // distance (toward camera) of the plane the cursor "lives" on
+const FIRE_GAZE = THREE.MathUtils.degToRad(75); // while shooting, the eye may stare much further off-axis
 
 export function createEyeScene() {
   const rand = rng(11);
@@ -150,6 +152,7 @@ export function createEyeScene() {
       uDilate: { value: 0 },
       uTime: { value: 0 },
       uPupil: { value: new THREE.Color(PUPIL_COLOR) },
+      uCharge: { value: 0 },
     },
     vertexShader: /* glsl */ `
       varying vec3 vObj; varying vec3 vWorldN; varying vec3 vViewN;
@@ -163,7 +166,7 @@ export function createEyeScene() {
         gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
       }`,
     fragmentShader: /* glsl */ `
-      uniform vec3 uLightDir; uniform float uDilate; uniform float uTime; uniform vec3 uPupil;
+      uniform vec3 uLightDir; uniform float uDilate; uniform float uTime; uniform vec3 uPupil; uniform float uCharge;
       varying vec3 vObj; varying vec3 vWorldN; varying vec3 vViewN;
       ${GLSL_NOISE}
       // scattered blood-shot dashes, elongated along the meridians
@@ -217,7 +220,9 @@ export function createEyeScene() {
         }
         vec3 lin = toLin(col);
         // pupil is passed in linear space so it matches scene 2's clear colour exactly
-        lin = mix(lin, uPupil, smoothstep(pupilR + .012, pupilR, ang));
+        // the pupil charges white-hot pink before the laser fires
+        lin += vec3(2.2, .12, .6) * uCharge * smoothstep(irisR, pupilR, ang) * .4 * step(ang, irisR);
+        lin = mix(lin, mix(uPupil, vec3(5.5, .4, 1.3), uCharge), smoothstep(pupilR + .012, pupilR, ang));
 
         // specular glints, locked to the view so they don't roll with the eye
         vec3 vn = normalize(vViewN);
@@ -344,6 +349,9 @@ export function createEyeScene() {
   officer.castShadow = true;
   scene.add(officer);
 
+  // tap to fire: laser, blast, flying bodies (see eyeBlast.js)
+  const blastSys = createEyeBlast({ scene, spots, officer, figMat, ramp });
+
   // attention reticle that slides over the ground where the eye is "looking"
   const reticle = new THREE.Group();
   const retMat = new THREE.MeshBasicMaterial({ color: '#0b0f33', transparent: true, opacity: 0.9, depthWrite: false });
@@ -409,24 +417,30 @@ export function createEyeScene() {
     }
     target.add(sacc);
 
+    // while shooting, stare straight at the target
+    const aiming = blastSys.aiming && state.focus < 0.01;
+    if (aiming) target.copy(blastSys.target);
+
     // clamp to the response cone: outside it, the eye rests on the rim
+    const cone = aiming ? FIRE_GAZE : MAX_GAZE;
     dir.copy(target).sub(eyeW).normalize();
-    if (dir.angleTo(toCam) > MAX_GAZE) {
+    if (dir.angleTo(toCam) > cone) {
       axisV.crossVectors(toCam, dir).normalize();
-      dir.copy(toCam).applyAxisAngle(axisV, MAX_GAZE);
+      dir.copy(toCam).applyAxisAngle(axisV, cone);
     }
     dummy.position.copy(eyeW);
     dummy.lookAt(tmp.copy(eyeW).add(dir));
-    eyeball.quaternion.slerp(dummy.quaternion, 1 - Math.exp(-dt * 11));
+    eyeball.quaternion.slerp(dummy.quaternion, 1 - Math.exp(-dt * (aiming ? 24 : 11)));
 
     // pupil tightens when the cursor comes close, blows wide open on transition
     const near = pointer.idle < 3.5 && ptrPt.distanceTo(tmp.copy(eyeW).addScaledVector(toCam, GAZE_PLANE)) < 2.2;
     dil = damp(dil, near ? 0.0 : 0.32 + Math.sin(t * 0.7) * 0.08, 5, dt);
     eyeMat.uniforms.uDilate.value = dil + (1 - dil) * state.dilate;
     eyeMat.uniforms.uTime.value = t;
+    eyeMat.uniforms.uCharge.value = blastSys.charge;
     lamp.material.color.setScalar(0.75 + 0.25 * Math.sin(t * 5));
 
-    // --- crowd: whoever is under the gaze goes wild
+    // --- targeting reticle follows the cursor over the plaza
     if (follow > 0.5 && raycaster.ray.intersectPlane(ground, attnTarget)) {
       attnTarget.x = THREE.MathUtils.clamp(attnTarget.x, -40, 40);
       attnTarget.z = THREE.MathUtils.clamp(attnTarget.z, -30, 22);
@@ -440,20 +454,20 @@ export function createEyeScene() {
     reticle.scale.setScalar(pulse);
     retMat.opacity = 0.9 * (1 - p);
 
-    for (const s of spots) {
-      const dx = s.x - attention.x;
-      const dz = s.z - attention.z;
-      const e = Math.exp(-(dx * dx + dz * dz) / 14);
-      const hop = Math.abs(Math.sin(t * (4.5 + e * 4) + s.phase)) * (0.05 + 0.6 * e);
-      dummy.position.set(s.x, hop, s.z);
-      dummy.rotation.set(0, s.rot + Math.sin(t * 1.3 + s.phase) * 0.14, Math.sin(t * 2.3 + s.phase) * (0.05 + e * 0.12));
-      dummy.scale.setScalar(s.s * (1 + e * 0.12));
-      dummy.updateMatrix();
-      s.mesh.setMatrixAt(s.i, dummy.matrix);
+    retMat.color.setRGB(0.04 + blastSys.charge * 0.9, 0.06, 0.2 + blastSys.charge * 0.2);
+
+    // the crowd now just cheers in place; the laser system owns their bodies (and their physics)
+    blastSys.update(dt, t, camera, (out) => out.set(0, 0, R + 0.17).applyQuaternion(eyeball.quaternion).add(floatG.position));
+
+    // recoil + camera shake from the shot
+    floatG.position.addScaledVector(dir, -blastSys.kick * 0.35);
+    if (blastSys.shake > 0.01) {
+      const k = blastSys.shake * 0.28;
+      camera.position.x += (Math.random() - 0.5) * k;
+      camera.position.y += (Math.random() - 0.5) * k;
+      camera.lookAt(look);
+      camera.updateMatrixWorld();
     }
-    for (const b of batches) b.instanceMatrix.needsUpdate = true;
-    dummy.rotation.set(0, 0, 0);
-    dummy.scale.setScalar(1);
   }
 
   function resize(aspect) {
@@ -507,5 +521,28 @@ export function createEyeScene() {
     return pOut;
   }
 
-  return { scene, camera, state, update, resize, pupilScreen, bloom: null };
+  const fireNDC = new THREE.Vector2();
+  const firePt = new THREE.Vector3();
+  /** Tap → laser. Takes the pointer in NDC; fires at the matching spot on the ground. */
+  function fire(x, y) {
+    if (state.focus > 0.01 || state.push > 0.01) return;
+    raycaster.setFromCamera(fireNDC.set(x, y), camera);
+    if (!raycaster.ray.intersectPlane(ground, firePt)) return;
+    firePt.x = THREE.MathUtils.clamp(firePt.x, -34, 30);
+    firePt.z = THREE.MathUtils.clamp(firePt.z, -12, 22);
+    blastSys.fire(firePt);
+  }
+
+  return {
+    scene,
+    camera,
+    state,
+    update,
+    resize,
+    pupilScreen,
+    fire,
+    get bloom() {
+      return blastSys.bloom;
+    },
+  };
 }
